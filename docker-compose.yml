@@ -1,0 +1,52 @@
+services:
+  api:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: revisia
+      DB_USER: revisia
+      DB_PASSWORD: revisia
+      JWT_SECRET: change-me-in-production
+      JWT_EXPIRES_IN: 7d
+      OLLAMA_BASE_URL: http://ollama:11434
+      OLLAMA_MODEL: mistral
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+    volumes:
+      - ./:/usr/src/app
+      - /usr/src/app/node_modules
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: revisia
+      POSTGRES_USER: revisia
+      POSTGRES_PASSWORD: revisia
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U revisia"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+
+volumes:
+  postgres_data:
+  ollama_data:
