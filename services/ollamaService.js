@@ -15,6 +15,7 @@ async function callOllama(prompt) {
         prompt,
         format: 'json',
         stream: false,
+        options: { temperature: 0.3 },
       }),
     });
   } catch (err) {
@@ -35,6 +36,7 @@ function parseJson(raw) {
   try {
     return JSON.parse(cleaned);
   } catch (err) {
+    console.error('Réponse Ollama non-JSON reçue :', raw);
     throw createError(502, "Réponse de l'IA invalide (JSON attendu)");
   }
 }
@@ -44,49 +46,84 @@ function truncate(texte) {
 }
 
 async function generateSummary(texte) {
-  const prompt = `Tu es un assistant pédagogique. À partir du cours ci-dessous, génère un résumé.
-Réponds strictement en JSON avec le format suivant, sans aucun texte hors du JSON :
-{"court": "résumé en 3 à 5 phrases", "detaille": "résumé détaillé structuré en plusieurs paragraphes"}
+  const prompt = `Voici un extrait de cours :
+"""${truncate(texte)}"""
 
-Cours :
-"""${truncate(texte)}"""`;
+En te basant uniquement sur ce cours, rédige un résumé court (3 à 5 phrases) et un résumé détaillé (plusieurs paragraphes structurés).
+Réponds UNIQUEMENT avec un objet JSON valide, sans aucun texte avant ou après, selon exactement ce format :
+{"court": "...", "detaille": "..."}
+
+Exemple de réponse attendue (structure uniquement, adapte le contenu au cours ci-dessus) :
+{"court": "Ce cours traite de X. Il aborde Y et Z. Il conclut sur W.", "detaille": "Le cours commence par... Ensuite... Enfin..."}`;
 
   const result = await callOllama(prompt);
   if (!result.court || !result.detaille) {
+    console.error('Résumé incomplet reçu d\'Ollama :', JSON.stringify(result));
     throw createError(502, "Réponse de l'IA incomplète pour le résumé");
   }
   return result;
 }
 
 async function generateFlashcards(texte, count = 10) {
-  const prompt = `Tu es un assistant pédagogique. À partir du cours ci-dessous, génère ${count} flashcards de révision (question/réponse).
-Réponds strictement en JSON avec le format suivant, sans aucun texte hors du JSON :
+  const prompt = `Voici un extrait de cours :
+"""${truncate(texte)}"""
+
+En te basant uniquement sur ce cours, génère ${count} flashcards de révision (question/réponse).
+Réponds UNIQUEMENT avec un objet JSON valide, sans aucun texte avant ou après, selon exactement ce format :
 {"flashcards": [{"question": "...", "reponse": "..."}]}
 
-Cours :
-"""${truncate(texte)}"""`;
+Exemple de réponse attendue (structure uniquement, adapte le contenu au cours ci-dessus) :
+{"flashcards": [{"question": "Qu'est-ce que X ?", "reponse": "X est..."}]}`;
 
   const result = await callOllama(prompt);
-  if (!Array.isArray(result.flashcards) || result.flashcards.length === 0) {
+  const flashcards = (Array.isArray(result.flashcards) ? result.flashcards : [])
+    .filter((f) => f && typeof f.question === 'string' && f.question.trim() &&
+      typeof f.reponse === 'string' && f.reponse.trim())
+    .map((f) => ({ question: f.question.trim(), reponse: f.reponse.trim() }));
+
+  if (flashcards.length === 0) {
+    console.error('Flashcards incomplètes reçues d\'Ollama :', JSON.stringify(result));
     throw createError(502, "Réponse de l'IA incomplète pour les flashcards");
   }
-  return result.flashcards;
+  return flashcards;
 }
 
 async function generateQuiz(texte, count = 10) {
-  const prompt = `Tu es un assistant pédagogique. À partir du cours ci-dessous, génère un quiz à choix multiples de ${count} questions.
-Chaque question doit avoir exactement 4 propositions, une seule étant correcte.
-Réponds strictement en JSON avec le format suivant, sans aucun texte hors du JSON :
-{"quiz": [{"question": "...", "propositions": ["...", "...", "...", "..."], "bonne_reponse": "doit être identique à l'une des propositions"}]}
+  const prompt = `Voici un extrait de cours :
+"""${truncate(texte)}"""
 
-Cours :
-"""${truncate(texte)}"""`;
+En te basant uniquement sur ce cours, génère un quiz à choix multiples de ${count} questions.
+Chaque question doit avoir exactement 4 propositions courtes et distinctes (jamais une liste de plusieurs éléments dans une seule proposition).
+Pour CHAQUE question, indique la bonne réponse via le champ "index_bonne_reponse" : un nombre entier entre 0 et 3 donnant la position de la bonne réponse dans le tableau "propositions" (0 = première, 1 = deuxième, 2 = troisième, 3 = quatrième). Ce champ est obligatoire, ne l'omets jamais.
+Réponds UNIQUEMENT avec un objet JSON valide, sans aucun texte avant ou après, selon exactement ce format :
+{"quiz": [{"question": "...", "propositions": ["...", "...", "...", "..."], "index_bonne_reponse": 0}]}
+
+Exemple de réponse attendue (structure uniquement, adapte le contenu au cours ci-dessus ; ici la bonne réponse est "C", donc l'index vaut 2) :
+{"quiz": [{"question": "Que représente X ?", "propositions": ["A", "B", "C", "D"], "index_bonne_reponse": 2}]}`;
 
   const result = await callOllama(prompt);
-  if (!Array.isArray(result.quiz) || result.quiz.length === 0) {
+  const quiz = (Array.isArray(result.quiz) ? result.quiz : [])
+    .filter((q) => q && typeof q.question === 'string' && q.question.trim() &&
+      Array.isArray(q.propositions) && q.propositions.length >= 2 &&
+      Number.isInteger(q.index_bonne_reponse) &&
+      q.index_bonne_reponse >= 0 && q.index_bonne_reponse < q.propositions.length)
+    .map((q) => {
+      const propositions = q.propositions.map((p) => String(p).trim());
+      return {
+        question: q.question.trim(),
+        propositions,
+        bonne_reponse: propositions[q.index_bonne_reponse],
+      };
+    });
+
+  if (quiz.length === 0) {
+    console.error('Quiz incomplet reçu d\'Ollama :', JSON.stringify(result));
     throw createError(502, "Réponse de l'IA incomplète pour le quiz");
   }
-  return result.quiz;
+  if (quiz.length < result.quiz.length) {
+    console.warn(`${result.quiz.length - quiz.length} question(s) de quiz écartée(s) (format invalide reçu d'Ollama)`);
+  }
+  return quiz;
 }
 
 module.exports = { generateSummary, generateFlashcards, generateQuiz };
