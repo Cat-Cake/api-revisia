@@ -1,5 +1,6 @@
 const { Summary, Flashcard, Quiz } = require('../models');
 const ollamaService = require('../services/ollamaService');
+const generationService = require('../services/generationService');
 const { findOwnedDocument } = require('./documentController');
 
 exports.generateSummary = async (req, res, next) => {
@@ -34,14 +35,8 @@ exports.getSummary = async (req, res, next) => {
 exports.generateFlashcards = async (req, res, next) => {
   try {
     const document = await findOwnedDocument(req.params.id, req.user.id);
-    const count = Number(req.body?.count) || 10;
-    const generated = await ollamaService.generateFlashcards(document.texte, count);
-
-    await Flashcard.destroy({ where: { documentId: document.id } });
-    const flashcards = await Flashcard.bulkCreate(
-      generated.map((f) => ({ documentId: document.id, question: f.question, reponse: f.reponse })),
-      { returning: true },
-    );
+    const count = Number(req.body?.count) || 5;
+    const flashcards = await generationService.generateFlashcardsForDocument(document, count);
 
     res.status(201).json({ flashcards });
   } catch (err) {
@@ -62,19 +57,8 @@ exports.getFlashcards = async (req, res, next) => {
 exports.generateQuiz = async (req, res, next) => {
   try {
     const document = await findOwnedDocument(req.params.id, req.user.id);
-    const count = Number(req.body?.count) || 10;
-    const generated = await ollamaService.generateQuiz(document.texte, count);
-
-    await Quiz.destroy({ where: { documentId: document.id } });
-    const quiz = await Quiz.bulkCreate(
-      generated.map((q) => ({
-        documentId: document.id,
-        question: q.question,
-        propositions: q.propositions,
-        bonneReponse: q.bonne_reponse,
-      })),
-      { returning: true },
-    );
+    const count = Number(req.body?.count) || 5;
+    const quiz = await generationService.generateQuizForDocument(document, count);
 
     res.status(201).json({ quiz: quiz.map(hideAnswer) });
   } catch (err) {

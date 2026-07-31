@@ -1,6 +1,7 @@
 const createError = require('http-errors');
 const { Document } = require('../models');
 const pdfService = require('../services/pdfService');
+const generationService = require('../services/generationService');
 
 function toSummaryJson(doc) {
   return {
@@ -29,10 +30,21 @@ exports.upload = async (req, res, next) => {
     });
 
     res.status(201).json({ document: toSummaryJson(document) });
+
+    generateFlashcardsAndQuizInBackground(document);
   } catch (err) {
     next(err);
   }
 };
+
+async function generateFlashcardsAndQuizInBackground(document) {
+  try {
+    await generationService.generateFlashcardsForDocument(document);
+    await generationService.generateQuizForDocument(document);
+  } catch (err) {
+    console.error(`Génération IA en arrière-plan échouée pour le document ${document.id} :`, err.message);
+  }
+}
 
 exports.list = async (req, res, next) => {
   try {

@@ -2,7 +2,7 @@ const createError = require('http-errors');
 
 const BASE_URL = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
 const MODEL = process.env.OLLAMA_MODEL || 'mistral';
-const MAX_CHARS = 12000;
+const MAX_CHARS = 8000;
 
 async function callOllama(prompt) {
   let response;
@@ -15,6 +15,7 @@ async function callOllama(prompt) {
         prompt,
         format: 'json',
         stream: false,
+        keep_alive: '30m',
         options: { temperature: 0.3 },
       }),
     });
@@ -64,7 +65,7 @@ Exemple de réponse attendue (structure uniquement, adapte le contenu au cours c
   return result;
 }
 
-async function generateFlashcards(texte, count = 10) {
+async function generateFlashcards(texte, count = 5) {
   const prompt = `Voici un extrait de cours :
 """${truncate(texte)}"""
 
@@ -88,7 +89,7 @@ Exemple de réponse attendue (structure uniquement, adapte le contenu au cours c
   return flashcards;
 }
 
-async function generateQuiz(texte, count = 10) {
+async function generateQuiz(texte, count = 5) {
   const prompt = `Voici un extrait de cours :
 """${truncate(texte)}"""
 
