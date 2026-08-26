@@ -26,6 +26,7 @@ exports.getSummary = async (req, res, next) => {
     res.json({
       court: summaries.find((s) => s.type === 'court') || null,
       detaille: summaries.find((s) => s.type === 'detaille') || null,
+      generationEnCours: document.statutGeneration === 'en_cours',
     });
   } catch (err) {
     next(err);
@@ -48,7 +49,7 @@ exports.getFlashcards = async (req, res, next) => {
   try {
     const document = await findOwnedDocument(req.params.id, req.user.id);
     const flashcards = await Flashcard.findAll({ where: { documentId: document.id } });
-    res.json({ flashcards });
+    res.json({ flashcards, generationEnCours: document.statutGeneration === 'en_cours' });
   } catch (err) {
     next(err);
   }
@@ -70,7 +71,7 @@ exports.getQuiz = async (req, res, next) => {
   try {
     const document = await findOwnedDocument(req.params.id, req.user.id);
     const quiz = await Quiz.findAll({ where: { documentId: document.id } });
-    res.json({ quiz: quiz.map(hideAnswer) });
+    res.json({ quiz: quiz.map(hideAnswer), generationEnCours: document.statutGeneration === 'en_cours' });
   } catch (err) {
     next(err);
   }

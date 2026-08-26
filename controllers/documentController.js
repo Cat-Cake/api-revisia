@@ -1,7 +1,8 @@
 const createError = require('http-errors');
-const { Document } = require('../models');
+const { Document, Summary} = require('../models');
 const pdfService = require('../services/pdfService');
 const generationService = require('../services/generationService');
+const ollamaService = require("../services/ollamaService");
 
 function toSummaryJson(doc) {
   return {
@@ -9,6 +10,7 @@ function toSummaryJson(doc) {
     nom: doc.nom,
     dateImport: doc.dateImport,
     longueurTexte: doc.texte ? doc.texte.length : 0,
+    generationEnCours: doc.statutGeneration === 'en_cours',
   };
 }
 
@@ -31,16 +33,37 @@ exports.upload = async (req, res, next) => {
 
     res.status(201).json({ document: toSummaryJson(document) });
 
-    generateFlashcardsAndQuizInBackground(document);
+    runGenerationInBackground(document);
   } catch (err) {
     next(err);
   }
 };
 
+async function runGenerationInBackground(document) {
+  await Promise.allSettled([
+    generateFlashcardsAndQuizInBackground(document),
+    generateSummaryInBackground(document),
+  ]);
+  await document.update({ statutGeneration: 'termine' });
+}
+
 async function generateFlashcardsAndQuizInBackground(document) {
   try {
     await generationService.generateFlashcardsForDocument(document);
     await generationService.generateQuizForDocument(document);
+  } catch (err) {
+    console.error(`Génération IA en arrière-plan échouée pour le document ${document.id} :`, err.message);
+  }
+}
+
+async function generateSummaryInBackground(document) {
+  try {
+    const { court, detaille } = await ollamaService.generateSummary(document.texte);
+
+    await Promise.all([
+      Summary.upsert({ documentId: document.id, type: 'court', contenu: court }),
+      Summary.upsert({ documentId: document.id, type: 'detaille', contenu: detaille }),
+    ]);
   } catch (err) {
     console.error(`Génération IA en arrière-plan échouée pour le document ${document.id} :`, err.message);
   }
@@ -75,6 +98,7 @@ exports.getOne = async (req, res, next) => {
         nom: document.nom,
         dateImport: document.dateImport,
         texte: document.texte,
+        generationEnCours: document.statutGeneration === 'en_cours',
       },
     });
   } catch (err) {

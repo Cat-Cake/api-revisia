@@ -18,6 +18,11 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.TEXT,
       allowNull: false,
     },
+    statutGeneration: {
+      type: DataTypes.ENUM('en_cours', 'termine'),
+      allowNull: false,
+      defaultValue: 'en_cours',
+    },
   }, {
     tableName: 'documents',
   });
