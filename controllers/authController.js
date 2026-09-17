@@ -73,3 +73,60 @@ exports.me = async (req, res, next) => {
     next(err);
   }
 };
+
+exports.updateProfile = async (req, res, next) => {
+  try {
+    const { nom, email } = req.body;
+
+    if (!nom || !email) {
+      throw createError(400, 'nom et email sont requis');
+    }
+
+    const user = await User.findByPk(req.user.id);
+    if (!user) {
+      throw createError(404, 'Utilisateur introuvable');
+    }
+
+    if (email !== user.email) {
+      const existing = await User.findOne({ where: { email } });
+      if (existing) {
+        throw createError(409, 'Un compte existe déjà avec cet email');
+      }
+    }
+
+    user.nom = nom;
+    user.email = email;
+    await user.save();
+
+    res.json({ user: toPublicUser(user) });
+  } catch (err) {
+    next(err);
+  }
+};
+
+exports.changePassword = async (req, res, next) => {
+  try {
+    const { ancien_mot_de_passe: ancienMotDePasse, mot_de_passe: motDePasse } = req.body;
+
+    if (!ancienMotDePasse || !motDePasse) {
+      throw createError(400, 'ancien_mot_de_passe et mot_de_passe sont requis');
+    }
+
+    const user = await User.findByPk(req.user.id);
+    if (!user) {
+      throw createError(404, 'Utilisateur introuvable');
+    }
+
+    const valid = await bcrypt.compare(ancienMotDePasse, user.motDePasse);
+    if (!valid) {
+      throw createError(401, 'Mot de passe actuel incorrect');
+    }
+
+    user.motDePasse = await bcrypt.hash(motDePasse, SALT_ROUNDS);
+    await user.save();
+
+    res.status(204).send();
+  } catch (err) {
+    next(err);
+  }
+};
